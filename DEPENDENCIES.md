@@ -41,6 +41,11 @@
 | `frida-dexdump-agent.js` | frida-dexdump JS Agent | 0.0 MB | wheel 提取 |
 | `Il2CppDumper.dll` | Il2CppDumper net6 主程序 | 0.2 MB | zip 提取 |
 
+## Blutter 主路径
+
+Blutter 按需下载主路径为自有仓 **TSDing666/tsding-engines-dyn**（动态链接引擎，91 个 Dart 版本按需 + 共享运行件）。
+本 Release 的 `blutter_android.zip`（standalone 全量版）仅作兜底备份。
+
 ## CI 产物（build-r2ghidra workflow）
 
 | 资产文件 | 说明 | 来源 |
