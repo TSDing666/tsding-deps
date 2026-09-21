@@ -1,0 +1,79 @@
+name: bisect-b
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build pkg-config wget unzip zip pax gperf python-is-python3 zlib1g-dev
+
+      - name: Checkout radare2 6.2.0
+        run: git clone --depth 1 --branch 6.2.0 https://github.com/radareorg/radare2
+
+      - name: Build r2 Android SDK (arm64, official recipe)
+        run: |
+          cd radare2
+          sys/android-ndk-install.sh 28 arm64
+          sys/android-sdk.sh -a arm64 --api 28 -j "$(nproc)" -o r2sdk.zip
+          unzip -q r2sdk.zip -d ../sdk
+
+      - name: Checkout r2ghidra 6.2.2
+        uses: actions/checkout@v4
+        with:
+          repository: radareorg/r2ghidra
+          ref: 6.2.2
+          path: r2ghidra
+
+      - name: Patch sleighc for cross build (native tool)
+        run: |
+          echo noop
+
+      - name: Meson cross build (arm64)
+        run: |
+          TC="$PWD/radare2/toolchain/bin"
+          SDK="$PWD/sdk/radare2-6.2.0-android-sdk"
+          ls "$TC" | head
+          cat > android-arm64.ini <<EOF
+          [binaries]
+          c = '$TC/aarch64-linux-android28-clang'
+          cpp = '$TC/aarch64-linux-android28-clang++'
+          ar = '$TC/llvm-ar'
+          strip = '$TC/llvm-strip'
+          pkg-config = 'pkg-config'
+          [host_machine]
+          system = 'android'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          [properties]
+          needs_exe_wrapper = true
+          EOF
+          cd r2ghidra
+          export PKG_CONFIG_PATH="$SDK/lib/arm64-v8a/pkgconfig"
+          meson setup build --buildtype=release --cross-file ../android-arm64.ini -Dprefix=/tmp/r2home
+          ninja -C build
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          find r2ghidra/build -name '*.so' -exec cp {} out/ \;
+          find r2ghidra/build -name '*.sla' | head -1 >/dev/null && \
+            find r2ghidra/build -name '*.sla' -exec cp --parents {} out/ \; 2>/dev/null || true
+          (cd r2ghidra/build && find . -name '*.sla' | zip -q ../r2ghidra-sleigh-compiled.zip -@) || true
+          cp r2ghidra/build/r2ghidra-sleigh-compiled.zip out/ 2>/dev/null || true
+          ls -la out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r2ghidra-6.2.2-android-arm64
+          path: out/
+
+# v2: reindex
