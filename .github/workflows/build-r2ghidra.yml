@@ -32,11 +32,6 @@ jobs:
           ref: 6.2.2
           path: r2ghidra
 
-      - name: Apply sleighc native patch
-        run: |
-          cd r2ghidra
-          git apply --verbose ../patches/sleighc-native.patch || patch -p1 < ../patches/sleighc-native.patch
-
       - name: Write meson cross file
         run: |
           TC="$PWD/radare2/toolchain/bin"
@@ -63,6 +58,7 @@ jobs:
           cd r2ghidra
           export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sdk/radare2-6.2.0-android-sdk/lib/arm64-v8a/pkgconfig"
           meson setup build --buildtype=release --cross-file ../cross-android-arm64.ini -Dprefix=/tmp/r2home
+          git apply --verbose ../patches/sleighc-native.patch || patch -p1 -N < ../patches/sleighc-native.patch
           ninja -C build
 
       - name: Collect artifacts
