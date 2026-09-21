@@ -1,0 +1,12 @@
+name: push-test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/push-test.yml"
+
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
