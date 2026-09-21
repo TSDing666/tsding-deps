@@ -25,16 +25,21 @@ jobs:
           sys/android-sdk.sh -a arm64 --api 28 -j "$(nproc)" -o r2sdk.zip
           unzip -q r2sdk.zip -d ../sdk
 
-      - name: Checkout r2ghidra 6.2.2
-        uses: actions/checkout@v4
-        with:
-          repository: radareorg/r2ghidra
-          ref: 6.2.2
-          path: r2ghidra
+      - name: Download r2ghidra 6.2.2 dist tarball (includes materialized subprojects)
+        run: |
+          wget -q https://github.com/radareorg/r2ghidra/releases/download/6.2.2/r2ghidra-6.2.2.tar.xz
+          tar xJf r2ghidra-6.2.2.tar.xz
+
+      - name: Apply sleighc native patch
+        run: |
+          cd r2ghidra-6.2.2
+          git apply --verbose ../patches/sleighc-native.patch || patch -p1 -N < ../patches/sleighc-native.patch
+          grep -n "sleighc-native" subprojects/ghidra-native/meson.build | head -2
 
       - name: Write meson cross file
         run: |
           TC="$PWD/radare2/toolchain/bin"
+          SDKDIR="$PWD/sdk/radare2-6.2.0-android-sdk/lib/arm64-v8a/pkgconfig"
           {
             echo "[binaries]"
             echo "c = '$TC/aarch64-linux-android28-clang'"
@@ -49,24 +54,22 @@ jobs:
             echo "endian = 'little'"
             echo "[properties]"
             echo "needs_exe_wrapper = true"
+            echo "pkg_config_libdir = ['$SDKDIR']"
           } > cross-android-arm64.ini
           cat cross-android-arm64.ini
 
       - name: Meson cross build
         run: |
-          SDK="$PWD/sdk/radare2-6.2.0-android-sdk"
-          cd r2ghidra
-          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sdk/radare2-6.2.0-android-sdk/lib/arm64-v8a/pkgconfig"
+          cd r2ghidra-6.2.2
           meson setup build --buildtype=release --cross-file ../cross-android-arm64.ini -Dprefix=/tmp/r2home
-          git apply --verbose ../patches/sleighc-native.patch || patch -p1 -N < ../patches/sleighc-native.patch
           ninja -C build
 
       - name: Collect artifacts
         run: |
           mkdir -p out
-          find r2ghidra/build -name '*.so' -exec cp {} out/ \;
-          (cd r2ghidra/build && find . -name '*.sla' | zip -q ../sleigh-compiled.zip -@) || true
-          cp r2ghidra/build/sleigh-compiled.zip out/ 2>/dev/null || true
+          find r2ghidra-6.2.2/build -name '*.so' -exec cp {} out/ \;
+          (cd r2ghidra-6.2.2/build && find . -name '*.sla' | zip -q ../sleigh-compiled.zip -@) || true
+          cp r2ghidra-6.2.2/build/sleigh-compiled.zip out/ 2>/dev/null || true
           ls -la out/
 
       - uses: actions/upload-artifact@v4
