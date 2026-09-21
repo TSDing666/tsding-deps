@@ -1,6 +1,6 @@
 --- a/subprojects/ghidra-native/meson.build	2026-09-07 03:09:43.000000000 +0800
-+++ b/subprojects/ghidra-native/meson.build	2026-09-22 02:05:02.486370800 +0800
-@@ -1,169 +1,187 @@
++++ b/subprojects/ghidra-native/meson.build	2026-09-22 02:55:05.691181200 +0800
+@@ -1,169 +1,183 @@
 -project('ghidra-native', 'cpp', meson_version : '>=0.60.0', version : 'd2242691bf45a12e3ea483a4789f825af4651506')
 -
 -base_sources = [
@@ -341,19 +341,15 @@
 +)
 +
 +# --- TSDing CI: native sleighc (must run on the build host to compile .sla) ---
-+zlib_native = dependency('zlib', version : '>=1.2.8', required: false, native: true)
-+if not zlib_native.found()
-+  error('sleighc native build requires system zlib')
-+endif
 +ghidra_base_native = static_library('base-native', base_sources,
 +  include_directories: incs, implicit_include_directories: false, native: true)
 +ghidra_decompiler_native = static_library('ghidra-native-decomp', decompiler_sources,
-+  dependencies: zlib_native, link_with: ghidra_base_native,
++  link_with: ghidra_base_native,
 +  include_directories: incs, implicit_include_directories: false, native: true)
 +slgh_native = static_library('slgh-native', slgh_sources + sleigh_compiler_sources,
-+  dependencies: zlib_native, link_with: ghidra_base_native,
++  link_with: ghidra_base_native,
 +  include_directories: incs, implicit_include_directories: false, native: true)
 +sleighc_exe = executable('sleighc-native', sleigh_compiler_sources,
-+  dependencies: zlib_native, link_with: [ghidra_decompiler_native, slgh_native],
++  link_with: [ghidra_decompiler_native, slgh_native],
 +  include_directories: incs, implicit_include_directories: false,
-+  override_options : ['c_std=c11', 'cpp_std=c++14'], native: true)
++  override_options : ['c_std=c11', 'cpp_std=c++14'], link_args: ['-lz'], native: true)
