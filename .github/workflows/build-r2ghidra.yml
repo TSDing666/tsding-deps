@@ -13,7 +13,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config wget unzip zip pax gperf python-is-python3 zlib1g-dev
+          sudo apt-get install -y meson ninja-build pkg-config wget unzip zip pax gperf python-is-python3 zlib1g-dev patch
 
       - name: Checkout radare2 6.2.0
         run: git clone --depth 1 --branch 6.2.0 https://github.com/radareorg/radare2
@@ -32,78 +32,48 @@ jobs:
           ref: 6.2.2
           path: r2ghidra
 
-      - name: Patch sleighc for cross build (native tool)
+      - name: Apply sleighc native patch
         run: |
           cd r2ghidra
-          python3 - <<'PYEOF'
-          p = 'subprojects/ghidra-native/meson.build'
-          s = open(p).read()
-          # 原 sleighc 为 target 机构建且 install:true，交叉编译时无法在 host 运行
-          s = s.replace("""  override_options : ['c_std=c11', 'cpp_std=c++14'],
-  install: true
-)""", """  override_options : ['c_std=c11', 'cpp_std=c++14'],
-  install: false
-)
+          git apply --verbose ../patches/sleighc-native.patch || patch -p1 < ../patches/sleighc-native.patch
 
-# --- TSDing CI patch: native sleighc（在 host 上运行以编译 .sla）---
-zlib_native = dependency('zlib', version : '>=1.2.8', required: false, native: true)
-if not zlib_native.found()
-  error('sleighc native build requires system zlib')
-endif
-ghidra_base_native = static_library('base-native', base_sources,
-  include_directories: incs, implicit_include_directories: false, native: true)
-ghidra_decompiler_native = static_library('ghidra-native-decomp', decompiler_sources,
-  dependencies: zlib_native, link_with: ghidra_base_native,
-  include_directories: incs, implicit_include_directories: false, native: true)
-slgh_native = static_library('slgh-native', slgh_sources + sleigh_compiler_sources,
-  dependencies: zlib_native, link_with: ghidra_base_native,
-  include_directories: incs, implicit_include_directories: false, native: true)
-sleighc_exe = executable('sleighc-native', sleigh_compiler_sources,
-  dependencies: zlib_native, link_with: [ghidra_decompiler_native, slgh_native],
-  include_directories: incs, implicit_include_directories: false,
-  override_options : ['c_std=c11', 'cpp_std=c++14'], native: true)""")
-          open(p, 'w').write(s)
-          print('patched')
-          PYEOF
-
-      - name: Meson cross build (arm64)
+      - name: Write meson cross file
         run: |
           TC="$PWD/radare2/toolchain/bin"
+          {
+            echo "[binaries]"
+            echo "c = '$TC/aarch64-linux-android28-clang'"
+            echo "cpp = '$TC/aarch64-linux-android28-clang++'"
+            echo "ar = '$TC/llvm-ar'"
+            echo "strip = '$TC/llvm-strip'"
+            echo "pkg-config = 'pkg-config'"
+            echo "[host_machine]"
+            echo "system = 'android'"
+            echo "cpu_family = 'aarch64'"
+            echo "cpu = 'aarch64'"
+            echo "endian = 'little'"
+            echo "[properties]"
+            echo "needs_exe_wrapper = true"
+          } > cross-android-arm64.ini
+          cat cross-android-arm64.ini
+
+      - name: Meson cross build
+        run: |
           SDK="$PWD/sdk/radare2-6.2.0-android-sdk"
-          ls "$TC" | head
-          cat > android-arm64.ini <<EOF
-          [binaries]
-          c = '$TC/aarch64-linux-android28-clang'
-          cpp = '$TC/aarch64-linux-android28-clang++'
-          ar = '$TC/llvm-ar'
-          strip = '$TC/llvm-strip'
-          pkg-config = 'pkg-config'
-          [host_machine]
-          system = 'android'
-          cpu_family = 'aarch64'
-          cpu = 'aarch64'
-          endian = 'little'
-          [properties]
-          needs_exe_wrapper = true
-          EOF
           cd r2ghidra
-          export PKG_CONFIG_PATH="$SDK/lib/arm64-v8a/pkgconfig"
-          meson setup build --buildtype=release --cross-file ../android-arm64.ini -Dprefix=/tmp/r2home
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sdk/radare2-6.2.0-android-sdk/lib/arm64-v8a/pkgconfig"
+          meson setup build --buildtype=release --cross-file ../cross-android-arm64.ini -Dprefix=/tmp/r2home
           ninja -C build
 
       - name: Collect artifacts
         run: |
           mkdir -p out
           find r2ghidra/build -name '*.so' -exec cp {} out/ \;
-          find r2ghidra/build -name '*.sla' | head -1 >/dev/null && \
-            find r2ghidra/build -name '*.sla' -exec cp --parents {} out/ \; 2>/dev/null || true
-          (cd r2ghidra/build && find . -name '*.sla' | zip -q ../r2ghidra-sleigh-compiled.zip -@) || true
-          cp r2ghidra/build/r2ghidra-sleigh-compiled.zip out/ 2>/dev/null || true
+          (cd r2ghidra/build && find . -name '*.sla' | zip -q ../sleigh-compiled.zip -@) || true
+          cp r2ghidra/build/sleigh-compiled.zip out/ 2>/dev/null || true
           ls -la out/
 
       - uses: actions/upload-artifact@v4
         with:
           name: r2ghidra-6.2.2-android-arm64
           path: out/
-
-# v2: reindex
